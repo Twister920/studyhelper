@@ -57,16 +57,7 @@ class KikBot(Flask):
 
         response_messages = []
 
-        def true_or_false(question, ans):
-            response_messages.append(TextMessage(
-                to=message.from_user,
-                chat_id=message.chat_id,
-                body=question,
-                keyboards=[SuggestedResponseKeyboard(
-                    responses=[TextResponse("True"), TextResponse("False")])]))
-
-
-
+        question_ans = False
 
         for message in messages:
             user = self.kik_api.get_user(message.from_user)
@@ -81,9 +72,7 @@ class KikBot(Flask):
                 response_messages.append(TextMessage(
                     to=message.from_user,
                     chat_id=message.chat_id,
-                    body="Hey {}, how are you?".format(user.first_name),
-                    # keyboards are a great way to provide a menu of options for a user to respond with!
-                    keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Good"), TextResponse("Bad")])]))
+                    body="Type 'q' or 'question' to be asked a new question!"))
 
             # Check if the user has sent a text message.
             elif isinstance(message, TextMessage):
@@ -91,34 +80,39 @@ class KikBot(Flask):
                 message_body = message.body.lower()
 
                 if message_body.split()[0] in ["q", "question"]:
-                    true_or_false("This statement is True.", False)
-
-                elif message_body == "good":
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="That's Great! :) Wanna see your profile pic?",
+                        body="This statement is False.",
                         keyboards=[SuggestedResponseKeyboard(
-                            responses=[TextResponse("Sure! I'd love to!"), TextResponse("No Thanks")])]))
+                            responses=[TextResponse("True"),
+                                       TextResponse("False")])]))
+                    question_ans = True
 
-                elif message_body == "bad":
+
+                elif message_body == "true" and question_ans == True:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Oh No! :( Wanna see your profile pic?",
-                        keyboards=[SuggestedResponseKeyboard(
-                            responses=[TextResponse("Yep! I Sure Do!"), TextResponse("No Thank You")])]))
+                        body="That's correct! Good work!"))
 
-                elif message_body in ["yep! i sure do!", "sure! i'd love to!"]:
-
-                    # Send the user a response along with their profile picture (function definition is below)
-                    response_messages += self.profile_pic_check_messages(user, message)
-
-                elif message_body in ["no thanks", "no thank you"]:
+                elif message_body == "true" and question_ans == False:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Ok, {}. Chat with me again if you change your mind.".format(user.first_name)))
+                        body="Oh No! :( The answer was False."))
+
+                elif message_body == "false" and question_ans == False:
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="That's correct! Good work!"))
+
+                elif message_body == "false" and question_ans == True:
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Oh No! :( The answer was False."))
                 else:
                     response_messages.append(TextMessage(
                         to=message.from_user,
