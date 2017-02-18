@@ -1,4 +1,4 @@
-#!/home/wasiq/kik-bot-python-example/env/bin/python
+#!/home/wasiq/studyhelper/env/bin/python
 
 import sys
 import getopt

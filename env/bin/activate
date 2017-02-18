@@ -40,7 +40,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="/home/wasiq/kik-bot-python-example/env"
+VIRTUAL_ENV="/home/wasiq/studyhelper/env"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"
