@@ -26,6 +26,7 @@ from flask import Flask, request, Response
 from kik import KikApi, Configuration
 from kik.messages import messages_from_json, TextMessage, PictureMessage, \
     SuggestedResponseKeyboard, TextResponse, StartChattingMessage
+import random
 
 
 class KikBot(Flask):
@@ -41,6 +42,9 @@ class KikBot(Flask):
                                      instance_path, instance_relative_config, root_path)
 
         self.route("/incoming", methods=["POST"])(self.incoming)
+        self.question_ans = True
+        self.questions = [('This statement is False.', False), ('This statement is True.', True)]
+        self.question_count = 0
 
 
     def incoming(self):
@@ -56,8 +60,6 @@ class KikBot(Flask):
         messages = messages_from_json(request.json["messages"])
 
         response_messages = []
-
-        question_ans = False
 
         for message in messages:
             user = self.kik_api.get_user(message.from_user)
@@ -79,47 +81,69 @@ class KikBot(Flask):
                 user = self.kik_api.get_user(message.from_user)
                 message_body = message.body.lower()
 
-                if message_body.split()[0] in ["q", "question"]:
+                if message_body.split()[0] in ["q", "question"] and self.question_count < len(self.questions):
+
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="This statement is False.",
+                        body=self.questions[self.question_count][0],
                         keyboards=[SuggestedResponseKeyboard(
                             responses=[TextResponse("True"),
                                        TextResponse("False")])]))
-                    question_ans = True
+                    self.question_ans = self.questions[self.question_count][1]
 
+                elif message_body.split()[0] in ["q", "question"] and self.question_count == len(self.questions):
+                    self.question_count = 0
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="You've gone through all of the questions, so we will start you back from the beginning."))
 
-                elif message_body == "true" and question_ans == True:
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body=self.questions[self.question_count][0],
+                        keyboards=[SuggestedResponseKeyboard(
+                            responses=[TextResponse("True"),
+                                       TextResponse("False")])]))
+                    self.question_ans = self.questions[self.question_count][1]
+
+                elif message_body == "true" and self.question_ans == True:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
                         body="That's correct! Good work!"))
-
-                elif message_body == "true" and question_ans == False:
+                    self.question_count += 1
+                elif message_body == "false" and self.question_ans == True:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Oh No! :( The answer was False."))
-
-                elif message_body == "false" and question_ans == False:
+                        body="Oh no! The answer was True!"))
+                    self.question_count += 1
+                elif message_body == "false" and self.question_ans == False:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
                         body="That's correct! Good work!"))
-
-                elif message_body == "false" and question_ans == True:
+                    self.question_count += 1
+                elif message_body == "true" and self.question_ans == False:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Oh No! :( The answer was False."))
+                        body="Oh no! The answer was False!"))
+                    self.question_count += 1
+                # If response was not found.
                 else:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
                         body="Sorry {}, I didn't quite understand that. How are you?".format(user.first_name),
                         keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Good"), TextResponse("Bad")])]))
-
+            elif isinstance(message, PictureMessage):
+                response_messages.append(TextMessage(
+                    to=message.from_user,
+                    chat_id=message.chat_id,
+                    body="yes"))
             # If its not a text message, give them another chance to use the suggested responses
             else:
 
@@ -135,36 +159,6 @@ class KikBot(Flask):
             self.kik_api.send_messages(response_messages)
 
         return Response(status=200)
-
-    @staticmethod
-    def profile_pic_check_messages(user, message):
-        """Function to check if user has a profile picture and returns appropriate messages.
-        :param user: Kik User Object (used to acquire the URL the profile picture)
-        :param message: Kik message received by the bot
-        :return: Message
-        """
-
-        messages_to_send = []
-        profile_picture = user.profile_pic_url
-
-        if profile_picture is not None:
-            messages_to_send.append(
-                # Another type of message is the PictureMessage - your bot can send a pic to the user!
-                PictureMessage(
-                    to=message.from_user,
-                    chat_id=message.chat_id,
-                    pic_url=profile_picture
-                ))
-
-            profile_picture_response = "Here's your profile picture!"
-        else:
-            profile_picture_response = "It does not look like you have a profile picture, you should set one"
-
-        messages_to_send.append(
-            TextMessage(to=message.from_user, chat_id=message.chat_id, body=profile_picture_response))
-
-        return messages_to_send
-
 
 if __name__ == "__main__":
     """ Main program """
