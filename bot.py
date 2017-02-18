@@ -29,6 +29,9 @@ from kik.messages import messages_from_json, TextMessage, PictureMessage, \
 import random
 
 
+#def gernerate_questions():
+
+
 class KikBot(Flask):
     """ Flask kik bot application class"""
 
@@ -52,6 +55,17 @@ class KikBot(Flask):
         the 'X-Kik-Signature' header, which is built using the bot's api key (set in main() below).
         :return: Response
         """
+
+        def ask_tf(question, answer):
+            response_messages.append(TextMessage(
+                to=message.from_user,
+                chat_id=message.chat_id,
+                body=question,
+                keyboards=[SuggestedResponseKeyboard(
+                responses=[TextResponse("True"),
+                           TextResponse("False")])]))
+
+
         # verify that this is a valid request
         if not self.kik_api.verify_signature(
                 request.headers.get("X-Kik-Signature"), request.get_data()):
@@ -76,20 +90,18 @@ class KikBot(Flask):
                     chat_id=message.chat_id,
                     body="Type 'q' or 'question' to be asked a new question!"))
 
+                response_messages.append(TextMessage(
+                    to=message.from_user,
+                    chat_id=message.chat_id,
+                    body="Alternatively, type 'tf' for true or false or 'blanks' for fill in the blanks"))
+
             # Check if the user has sent a text message.
             elif isinstance(message, TextMessage):
                 user = self.kik_api.get_user(message.from_user)
                 message_body = message.body.lower()
 
                 if message_body.split()[0] in ["q", "question"] and self.question_count < len(self.questions):
-
-                    response_messages.append(TextMessage(
-                        to=message.from_user,
-                        chat_id=message.chat_id,
-                        body=self.questions[self.question_count][0],
-                        keyboards=[SuggestedResponseKeyboard(
-                            responses=[TextResponse("True"),
-                                       TextResponse("False")])]))
+                    ask_tf(self.questions[self.question_count][0], self.questions[self.question_count][1])
                     self.question_ans = self.questions[self.question_count][1]
 
                 elif message_body.split()[0] in ["q", "question"] and self.question_count == len(self.questions):
@@ -99,14 +111,9 @@ class KikBot(Flask):
                         chat_id=message.chat_id,
                         body="You've gone through all of the questions, so we will start you back from the beginning."))
 
-                    response_messages.append(TextMessage(
-                        to=message.from_user,
-                        chat_id=message.chat_id,
-                        body=self.questions[self.question_count][0],
-                        keyboards=[SuggestedResponseKeyboard(
-                            responses=[TextResponse("True"),
-                                       TextResponse("False")])]))
+                    ask_tf(self.questions[self.question_count][0], self.questions[self.question_count][1])
                     self.question_ans = self.questions[self.question_count][1]
+
 
                 elif message_body == "true" and self.question_ans == True:
                     response_messages.append(TextMessage(
@@ -139,7 +146,11 @@ class KikBot(Flask):
                         chat_id=message.chat_id,
                         body="Sorry {}, I didn't quite understand that. How are you?".format(user.first_name),
                         keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Good"), TextResponse("Bad")])]))
-
+            elif isinstance(message, PictureMessage):
+                response_messages.append(TextMessage(
+                    to=message.from_user,
+                    chat_id=message.chat_id,
+                    body="yes"))
             # If its not a text message, give them another chance to use the suggested responses
             else:
 
@@ -158,10 +169,10 @@ class KikBot(Flask):
 
 if __name__ == "__main__":
     """ Main program """
-    kik = KikApi('thisbotbestbot', '5228b346-4e6c-423f-820d-316baae9beda')
+    kik = KikApi('studyhelper', 'be6f061d-69f2-401a-9fad-0a31aa9cac68')
     # For simplicity, we're going to set_configuration on startup. However, this really only needs to happen once
     # or if the configuration changes. In a production setting, you would only issue this call if you need to change
     # the configuration, and not every time the bot starts.
-    kik.set_configuration(Configuration(webhook='http://29e3c70f.ngrok.io/incoming'))
+    kik.set_configuration(Configuration(webhook='https://eb525c5b.ngrok.io/incoming'))
     app = KikBot(kik, __name__)
     app.run(port=8080, host='127.0.0.1', debug=True)
