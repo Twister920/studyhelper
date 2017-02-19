@@ -4,23 +4,45 @@ import textAnalytics
 def get_json_from_notes(string):
 	bullet_characters = ["-", "*"]
 
-	sorted_notes = {}
-
 	note = string.splitlines()
+	is_bullets = False
 
-	for line in :
+	bullets = []
+
+	note_organized = {"Sentences" : []}
+
+	#Goes through notes from bottom to top
+	for line_index in range(len(note) - 1, -1, -1):
+		line = note[line_index]
+
 		if line[0] in bullet_characters:
-			print line + " - is a bullet."
+			is_bullets = True
 
-	return string #string.replace("\n", " ")
+			#Adds the bullet and its keyword to the list of bullets
+			bullets.append([line, textAnalytics.get_key_phrases(line)])
+
+		#If the iterator hits a non-bullet after a list of bullets, assume it is the heading
+		elif is_bullets:
+			is_bullets = False
+
+			note_organized[line] = bullets
+
+		#Otherwise, it must just be a regular phrase
+		else:
+			note_organized["Sentences"].append([line, textAnalytics.get_key_phrases(line)])
+
+	return note_organized 
 
 
-
-
-sample_notes = {
+'''sample_notes = {
 	"Mitochondria" : 
-	{"phrase" : "is the powerhouse of the cell", "keywords" : ["Mitochondria", "powerhouse", "cell"]}
-}
+	[["is the powerhouse of the cell", ["Mitochondria", "powerhouse", "cell"]],
+	["is still the powerhouse of the cell", ["Mitochondria", "still", "cell"]]]]
+
+	"Sentences" :
+	[["is the powerhouse of the cell", ["Mitochondria", "powerhouse", "cell"]],
+	["is still the powerhouse of the cell", ["Mitochondria", "still", "cell"]]]]
+}'''
 
 
 
