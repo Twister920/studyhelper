@@ -1,5 +1,4 @@
 import requests
-import textAnalytics
 
 def get_json_from_notes(string):
 	bullet_characters = ["-", "*"]
@@ -19,7 +18,7 @@ def get_json_from_notes(string):
 			is_bullets = True
 
 			#Adds the bullet and its keyword to the list of bullets
-			bullets.append([line, textAnalytics.get_key_phrases(line)])
+			bullets.append(line)
 
 		#If the iterator hits a non-bullet after a list of bullets, assume it is the heading
 		elif is_bullets:
@@ -29,15 +28,14 @@ def get_json_from_notes(string):
 
 		#Otherwise, it must just be a regular phrase
 		else:
-			note_organized["Sentences"].append([line, textAnalytics.get_key_phrases(line)])
+			note_organized["Sentences"].append(line)
 
 	return note_organized 
 
 
 '''sample_notes = {
 	"Mitochondria" : 
-	[["is the powerhouse of the cell", ["Mitochondria", "powerhouse", "cell"]],
-	["is still the powerhouse of the cell", ["Mitochondria", "still", "cell"]]]]
+	["is the powerhouse of the cell", "is still the powerhouse of the cell"]
 
 	"Sentences" :
 	[["is the powerhouse of the cell", ["Mitochondria", "powerhouse", "cell"]],
