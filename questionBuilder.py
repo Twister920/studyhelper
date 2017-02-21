@@ -6,48 +6,117 @@ TRUE_FALSE = 0
 FILL_BLANK = 1
 MULTIPLE_CHOICE = 2
 
-
+# Parent class of all question types
 class Question:
 
-	def __init__(self, question_type, question, answer):
-		self.type = question_type
-		self.question = question
-		self.answer = answer
+	def __init__(self, statement):
+		self.create_question_from_statements(statement)
+
+	# Returns False if unsuccessful
+	def create_question_from_statements(self, statement):
+		return False
 
 	def ask_question(self, bot):
-		if self.type == TRUE_FALSE:
-			bot.response_messages.append(TextMessage(
-		        to=bot.message.from_user,
-		        chat_id=bot.message.chat_id,
-		        body=self.question,
-		        keyboards=[SuggestedResponseKeyboard(
-		        responses=[TextResponse("True"),
-		                   TextResponse("False")])]))
+		bot.send_message(self.question)
 
-		elif self.type == FILL_BLANK:
-			bot.send_message(self.question)
+	# Not sure how to make abstract functions in python
+	def check_answer(self, user_answer):
+		return None
+
+
+
+class QuestionTrueFalse(Question):
+
+	def __init__(self, statement):
+		Question.__init__(self, statement)
+
+	# Returns False if unsuccessful
+	def create_question_from_statements(self, statement):
+		action_verbs = ["is", "was", "are", "were", "will", "can", "should"]
+		self.answer = True
+
+		# Randomly chooses if answer to question is "True" or "False"
+		is_true = random.randint(0, 1)
+
+		if not is_true:
+			if "not" in statement:
+				self.question = statement.replace("not ", "")
+				self.answer = False
+			else:
+				for action_verb in action_verbs:
+					if action_verb in statement:
+						self.question = statement.replace(action_verb, action_verb + " not")
+						self.answer = False
+
+						break
+		
+		# If creating a statement with a false answer was unsuccessful, also create a true one
+		if is_true or self.answer == True:
+			self.question = statement
+			self.answer = True
+
+	def ask_question(self, bot):
+		bot.send_message_with_responses(self.question, ["True", "False"])
 
 	def check_answer(self, user_answer):
-		user_answer = user_answer.lower()
+		user_answer = user_answer.lower().strip()
 
-		if self.type == TRUE_FALSE:
-			positive_answers = ["true", "yes", "t", "y"]
-			negative_answers = ["false", "no", "f", "n"]
+		positive_answers = ["true", "yes", "t", "y"]
+		negative_answers = ["false", "no", "f", "n"]
 
-			# Converts user's input of true or false into boolean value
-			if user_answer in positive_answers:
-				user_answer = True
-			elif user_answer in negative_answers:
-				user_answer = False
-			else:
-				self.send_message("Sorry {}, I didn't get that. Try again?".format(self.user.first_name))
-				return None
+		# Converts user's input of true or false into boolean value
+		if user_answer in positive_answers:
+			user_answer = True
+		elif user_answer in negative_answers:
+			user_answer = False
+		else:
+			self.send_message("Sorry {}, I didn't get that. Try again?".format(self.user.first_name))
+			return None
 
-			return user_answer == self.answer
+		return user_answer == self.answer
 
 
-		elif self.type == FILL_BLANK:
-			return user_answer == self.answer
+
+class QuestionFillBlank(Question):
+
+	def __init__(self, statement):
+		Question.__init__(self, statement)
+
+	def create_question_from_statements(self, statement):
+		key_words = textAnalytics.get_key_phrases(statement)
+
+		if key_words == []:
+			return False
+
+		key_word_index = random.randint(0, len(key_words) - 1)
+		key_word = key_words[key_word_index]
+
+		self.question = statement.replace(key_word, "________")
+		self.answer = key_word
+
+	def ask_question(self, bot):
+		bot.send_message_with_responses(self.question, ["True", "False"])
+
+	def check_answer(self, user_answer):
+		user_answer = user_answer.lower().strip()
+		return user_answer == self.answer.lower().strip()
+
+
+
+class QuestionMultipleChoice(Question):
+
+	def __init__(self, statement):
+		Question.__init__(self, statement)
+
+	def ask_question(self, bot):
+		bot.send_message_with_responses(self.question, ["True", "False"])
+
+	def check_answer(self, user_answer):
+		user_answer = user_answer.lower().strip()
+		return user_answer == self.answer.lower().strip()
+
+
+
 
 
 
@@ -55,96 +124,36 @@ class Question:
 class QuestionBuilder:
 
 	def __init__(self):
+		# The number of each type of question created
 		self.question_types = { TRUE_FALSE : 0,
-						   		FILL_BLANK : 0
+						   		FILL_BLANK : 0,
+						   		MULTIPLE_CHOICE : 0
 		}
-
-		self.truths = 0
-		self.falses = 0
 
 	def create_questions(self, sorted_notes):
 		questions = []
 		question = None
 
 		for statement in sorted_notes["Sentences"]:
-			print statement
-
+			# To make an equal balance of questions, find the least asked type of question
 			least_asked_question = min(self.question_types.items(), key=lambda x: x[1])[0]
 
-			print ("Questions asked: " + str(self.question_types))
-			print ("Least asked type: " + str(least_asked_question))
-
 			if least_asked_question == FILL_BLANK:
-				question = self.create_fill_blank_question(statement)
+				question = QuestionFillBlank(statement)
 				self.question_types[FILL_BLANK] += 1
 
 			if least_asked_question == TRUE_FALSE or question == None:
-				question = self.create_true_false_question(statement)
+				question = QuestionTrueFalse(statement)
 				self.question_types[TRUE_FALSE] += 1
+
+			#if least_asked_question == MULTIPLE_CHOICE or question == None:
+			#	question = QuestionMultipleChoice(statement)
+			#	self.question_types[MULTIPLE_CHOICE] += 1
 
 			if question == None:
 				continue
 
 			questions.append(question)
-
 			question = None
 
 		return questions
-
-	# Creates true-false question based on some statement
-	def create_true_false_question(self, statement):
-		action_verbs = ["is", "was", "are", "were", "will", "can", "should"]
-
-		answer = True
-
-		# Tries to create a true-false question with a false answer if there
-		# are fewer of these, to create an equal balance
-		if self.truths > self.falses:
-			if "not" in statement:
-				question = statement.replace("not ", "")
-				answer = False
-
-				self.falses += 1
-			else:
-				for action_verb in action_verbs:
-					if action_verb in statement:
-						question = statement.replace(action_verb, action_verb + " not")
-						answer = False
-
-						self.falses += 1
-						break
-		
-		# If creating a statement with a false answer was unsuccessful, default to 
-		# creating a true one.
-		if answer == True:
-			question = statement
-			answer = True
-
-			self.truths += 1
-
-		return Question(TRUE_FALSE, question, answer)
-
-
-
-	# Creates fill-in-the-blank question based on some statement
-	# Returns None if unsuccessful
-	def create_fill_blank_question(self, statement):
-		print ("FILL BLANK CREATED")
-
-		key_words = textAnalytics.get_key_phrases(statement)
-
-		if key_words == []:
-			return None
-
-		key_word_index = random.randint(0, len(key_words) - 1)
-		key_word = key_words[key_word_index]
-
-		question = statement.replace(key_word, "________")
-		answer = key_word
-
-		return Question(FILL_BLANK, question, answer)
-
-
-
-
-

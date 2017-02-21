@@ -24,7 +24,7 @@ from questionBuilder import *
 import imageAnalytics
 import noteAnalytics
 
-LISTENING_SERVER = "http://1bd1333c.ngrok.io"
+LISTENING_SERVER = "http://e209e810.ngrok.io"
 
 class KikBot(Flask):
     """ Flask kik bot application class"""
@@ -41,6 +41,9 @@ class KikBot(Flask):
         self.route("/incoming", methods=["POST"])(self.incoming)
         self.questions = None
         self.question_count = 0
+
+        # States which keep track of what exactly the user is responded to
+        self.replace_questions_response = False
 
         self.response_messages = []
 
@@ -70,14 +73,16 @@ class KikBot(Flask):
 
             # Check if the user has sent a picture
             elif isinstance(message, PictureMessage):
-                self.send_message("Thanks! Reading notes...")
+                if self.questions == None:
+                    self.send_message("Thanks! Reading notes...")
 
-                notes = imageAnalytics.get_text_from_url(message.pic_url)
-                sorted_notes = noteAnalytics.get_json_from_notes(notes)
+                    notes = imageAnalytics.get_text_from_url(message.pic_url)
+                    sorted_notes = noteAnalytics.get_json_from_notes(notes)
 
-                self.send_message("Creating questions...")
+                    self.send_message("Creating questions...")
 
-                self.questions = QuestionBuilder().create_questions(sorted_notes)
+                    self.questions = QuestionBuilder().create_questions(sorted_notes)
+
 
             # Check if the user has sent a text message.
             elif isinstance(message, TextMessage):
@@ -100,12 +105,15 @@ class KikBot(Flask):
                 self.send_message("Sorry {}, I didn't get that. Try again?".format(self.user.first_name))
 
 
-
             if self.questions != None:
                 self.questions[self.question_count].ask_question(self)
 
             # We're sending a batch of messages. We can send up to 25 messages at a time (with a limit of
             # 5 messages per user).
+
+            print "Total messages: " + str(len(self.response_messages))
+            for message in self.response_messages:
+                print ("Message: " + message.body)
 
             self.kik_api.send_messages(self.response_messages)
 
@@ -133,6 +141,18 @@ class KikBot(Flask):
             chat_id=self.message.chat_id,
             body=message))
 
+    def send_message_with_responses(self, message, responses):
+        text_responses = []
+
+        for response in responses:
+            text_responses.append(TextResponse(response))
+
+        self.response_messages.append(TextMessage(
+            to=self.message.from_user,
+            chat_id=self.message.chat_id,
+            body=message,
+            keyboards=[SuggestedResponseKeyboard(
+            responses=text_responses)]))
 
 
 
