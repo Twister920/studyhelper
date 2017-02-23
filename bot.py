@@ -21,10 +21,21 @@ from kik.messages import messages_from_json, TextMessage, PictureMessage, \
 import random
 
 from questionBuilder import *
-import imageAnalytics
-import noteAnalytics
 
-LISTENING_SERVER = "http://e209e810.ngrok.io"
+LISTENING_SERVER = "http://ea390353.ngrok.io"
+
+NO_RESPONSE = -1
+REPLACE_NOTES = 0
+ANSWER = 1
+CONTINUE_QUIZZING = 2
+UPLOAD_NOTES = 3
+UPLOADING_MORE_NOTES = 4
+CANCEL = 5
+
+NO_ACTION = 5
+ADD_NOTES = 6
+REPLACE_NOTES = 7
+
 
 class KikBot(Flask):
     """ Flask kik bot application class"""
@@ -39,11 +50,17 @@ class KikBot(Flask):
                                      instance_path, instance_relative_config, root_path)
 
         self.route("/incoming", methods=["POST"])(self.incoming)
-        self.questions = None
-        self.question_count = 0
 
-        # States which keep track of what exactly the user is responded to
-        self.replace_questions_response = False
+        self.quiz = QuizCreator()
+        self.pic_url = None
+
+        # Has the user sent their first message yet
+        self.first_message = True
+
+        # What the bot is currently waiting on a response for
+        self.awaiting_response = UPLOAD_NOTES
+        self.awaiting_action = NO_ACTION
+        self.next_action = NO_ACTION
 
         self.response_messages = []
 
@@ -69,71 +86,144 @@ class KikBot(Flask):
 
             # Check if its the user's first message. Start Chatting messages are sent only once.
             if isinstance(message, StartChattingMessage):
-                self.send_first_message()
+                self.send_message("Welcome to StudyHelper!")
 
             # Check if the user has sent a picture
             elif isinstance(message, PictureMessage):
-                if self.questions == None:
-                    self.send_message("Thanks! Reading notes...")
+                if self.quiz.is_empty() or self.awaiting_action == UPLOAD_NOTES:
+                    if self.quiz.is_empty():
+                        self.send_message("Thanks! Reading notes...")
+                        self.send_message("Creating questions...")
+                        self.quiz.add_notes_from_picture(message.pic_url)
 
-                    notes = imageAnalytics.get_text_from_url(message.pic_url)
-                    sorted_notes = noteAnalytics.get_json_from_notes(notes)
+                    elif self.next_action == ADD_NOTES:
+                        self.quiz.add_notes_from_picture(message.pic_url)
 
-                    self.send_message("Creating questions...")
+                    elif self.next_action == REPLACE_NOTES:
+                        self.quiz.replace_notes_from_picture(message.pic_url)
 
-                    self.questions = QuestionBuilder().create_questions(sorted_notes)
+                    self.send_message_with_responses("What would you like to do now?",
+                                                    ["Add More", "Replace", "Cancel", "Start Quiz"])
 
+                    self.awaiting_action = UPLOAD_NOTES
+                    self.awaiting_response = UPLOADING_MORE_NOTES
+
+                else:
+                    # Saves the picture url
+                    self.pic_url = message.pic_url
+                    self.send_message_with_responses("I already have some notes, should I add to them or replace them?",
+                                                     ["Add", "Replace", "Cancel"])
+
+                    self.awaiting_response = REPLACE_NOTES
 
             # Check if the user has sent a text message.
             elif isinstance(message, TextMessage):
-                if self.questions == None:
-                    self.send_message("Hi! To get started, please take a picture of your notes.")
+                # Prompt user to upload notes if there are none
+                if self.awaiting_response == UPLOAD_NOTES:
+                    self.send_message("To get started, please take a picture of your notes.")
                     self.send_message("Then the quizzing can begin")
 
-                else:
-                    self.check_answer(self.message.body)
-                    self.question_count += 1
-                    print (self.question_count)
-                    print (len(self.questions))
+                elif self.awaiting_response == CANCEL:
+                    response = message.body.strip().lower()[0]
 
-                if self.questions != None and self.question_count == len(self.questions):
-                    self.question_count = 0
-                    self.send_message("You've gone through all of the questions, so we will start you back from the beginning.")
+                    if response == 'c':
+                        if self.quiz.is_empty():
+                            self.awaiting_action = UPLOAD_NOTES
+                            self.awaiting_response = UPLOAD_NOTES
+                        else:
+                            self.send_message_with_responses("Okay! What would you like to do now?",
+                                                    ["Add More", "Replace", "Cancel", "Start Quiz"])
+
+                            self.awaiting_action = UPLOAD_NOTES
+                            self.awaiting_response = UPLOADING_MORE_NOTES
+
+                # If the user
+                elif self.awaiting_response == UPLOADING_MORE_NOTES:
+                    response = message.body.strip().lower()[0]
+
+                    if response == 'a':
+                        self.send_message("Okay! Please upload the notes to add, or type 'Cancel'.")
+                        self.awaiting_response = CANCEL
+                        self.awaiting_action = UPLOAD_NOTES
+                        self.next_action = ADD_NOTES
+
+                    elif response == 'r':
+                        self.send_message("Okay! Please upload notes to replace, or type 'Cancel'.")
+                        self.awaiting_response = CANCEL
+                        self.awaiting_action = UPLOAD_NOTES
+                        self.next_action = REPLACE_NOTES
+
+                    elif response == 'c':
+                        self.send_message("Okay!")
+                        self.quiz.reset()
+                        self.awaiting_response = UPLOAD_NOTES
+                        self.awaiting_action = NO_ACTION
+
+                    elif response == 's':
+                        self.send_message("Okay! Starting the quiz...")
+                        self.awaiting_response = ANSWER
+                        self.awaiting_action = NO_ACTION
+
+                elif self.awaiting_response == REPLACE_NOTES:
+                    response = message.body.strip().lower()[0]
+
+                    if response == 'a':
+                        self.send_message("Okay! Adding new notes...")
+                        self.quiz.add_notes_from_picture(message.pic_url)
+
+                    elif response == 'r':
+                        self.send_message("Okay! Replacing notes...")
+                        self.quiz.replace_notes_from_picture(message.pic_url)
+
+                    elif response == 'c':
+                        self.send_message("Okay! Keeping old notes...")
+
+                    self.awaiting_response = ANSWER
+
+                # After the questions have run out, checks if user wants to continue or stop
+                elif self.awaiting_response == CONTINUE_QUIZZING:
+                    response = message.body.strip().lower()[0]
+
+                    if response == 'y':
+                        self.quiz.regenerate_questions()
+                        self.send_message("Okay! Starting over...")
+                        self.awaiting_response = ANSWER
+
+                    elif response == 'n':
+                        self.send_message("Okay!")
+                        self.awaiting_response = UPLOAD_NOTES
+
+                # Check the user's answer
+                elif self.awaiting_response == ANSWER:
+                    self.quiz.check_answer(self, self.message.body)
+
 
             # If its not a text message, give them another chance to use the suggested responses
             else:
                 self.send_message("Sorry {}, I didn't get that. Try again?".format(self.user.first_name))
 
 
-            if self.questions != None:
-                self.questions[self.question_count].ask_question(self)
+            if not self.quiz.is_empty() and self.awaiting_response == ANSWER:
+                # Tries to ask user a question, returns false if it fails
+                if not self.quiz.ask_next_question(self):
+                    self.send_message_with_responses("You've gone through all of the questions, would you like to start over?",
+                                                     ["Yes", "No"])
+                    self.awaiting_response = CONTINUE_QUIZZING
+                else:
+                    self.awaiting_response = ANSWER
 
             # We're sending a batch of messages. We can send up to 25 messages at a time (with a limit of
             # 5 messages per user).
 
-            print "Total messages: " + str(len(self.response_messages))
-            for message in self.response_messages:
-                print ("Message: " + message.body)
-
-            self.kik_api.send_messages(self.response_messages)
+            if self.response_messages != []:
+                self.kik_api.send_messages(self.response_messages)
 
             self.response_messages = []
 
         return Response(status=200)
 
-    # Checks user's answer
-    def check_answer(self, user_answer):
-        question = self.questions[self.question_count]
 
-        if question.check_answer(user_answer):
-            self.send_message("That's correct! Good work!")
-        else:
-            self.send_message("Oh no that's wrong, the correct answer was: " + str(question.answer) + ".")
 
-    def send_first_message(self):
-        self.send_message("Welcome to StudyHelper!")
-        self.send_message("Type 'q' or 'question' to be asked a new question!")
-        self.send_message("Alternatively, type 'true_false' for true or false or 'blanks' for fill in the blanks")
 
     def send_message(self, message):
         self.response_messages.append(TextMessage(
